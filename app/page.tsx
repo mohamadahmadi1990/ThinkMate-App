@@ -16,6 +16,7 @@ type Classification = {
   kind: ClassificationKind;
   isSentence: boolean;
   isDuplicate: boolean;
+  hasSameMeaningMatch?: boolean;
   hasApproximateMatch: boolean;
   similarEntries: Array<{
     text: string;
@@ -71,7 +72,7 @@ export default function Home() {
         headers: {
           "Content-Type": "application/json"
         },
-        body: JSON.stringify({ text: trimmedText })
+        body: JSON.stringify({ text })
       });
       const payload = (await response.json()) as ApiResponse;
 
@@ -161,13 +162,17 @@ export default function Home() {
                 <dt>Exact duplicate</dt>
                 <dd>
                   {result.isDuplicate
-                    ? "Yes, this exact text is already saved."
-                    : "No exact duplicate found."}
+                    ? "Yes, this normalized text is already active."
+                    : "No normalized exact match found."}
                 </dd>
               </div>
               <div>
-                <dt>High-confidence approximate match</dt>
-                <dd>{result.hasApproximateMatch ? "Yes" : "No"}</dd>
+                <dt>High-confidence same-meaning match</dt>
+                <dd>
+                  {(result.hasSameMeaningMatch ?? result.hasApproximateMatch)
+                    ? "Yes"
+                    : "No"}
+                </dd>
               </div>
               <div>
                 <dt>Why</dt>
@@ -179,14 +184,14 @@ export default function Home() {
               <div className="similar">
                 {closeMatches.length > 0 ? (
                   <section className="similar-group">
-                    <h3>Close match</h3>
+                    <h3>Close meaning match</h3>
                     <ol>
                       {closeMatches.map((entry) => (
                         <li key={`${entry.text}-${entry.similarity}`}>
                           <span>{entry.text}</span>
                           <small>
                             {entry.kind} -{" "}
-                            {formatSimilarity(entry.similarity)} similar
+                            {formatSimilarity(entry.similarity)} meaning score
                           </small>
                         </li>
                       ))}
@@ -196,14 +201,14 @@ export default function Home() {
 
                 {relatedResults.length > 0 ? (
                   <section className="similar-group">
-                    <h3>Related results</h3>
+                    <h3>Related signals</h3>
                     <ol>
                       {relatedResults.map((entry) => (
                         <li key={`${entry.text}-${entry.similarity}`}>
                           <span>{entry.text}</span>
                           <small>
                             {entry.kind} -{" "}
-                            {formatSimilarity(entry.similarity)} similar
+                            {formatSimilarity(entry.similarity)} meaning score
                           </small>
                         </li>
                       ))}

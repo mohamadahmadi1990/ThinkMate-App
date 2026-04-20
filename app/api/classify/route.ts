@@ -5,7 +5,7 @@ import { z } from "zod";
 import {
   cosineSimilarity,
   createEmbedding,
-  topSimilarEntries
+  topSemanticMatches
 } from "@/lib/embeddings";
 import { getOpenAIClient } from "@/lib/openai";
 import { getPrismaClient } from "@/lib/prisma";
@@ -14,10 +14,10 @@ export const runtime = "nodejs";
 
 const MAX_INPUT_LENGTH = 50;
 const ACTIVE_WINDOW_MS = 5 * 60 * 1000;
-const APPROXIMATE_MATCH_THRESHOLD = 0.9;
-const MAX_SIMILARITY_COMPARISON_ENTRIES = 50;
+const SAME_MEANING_MATCH_THRESHOLD = 0.9;
+const MAX_SEMANTIC_COMPARISON_ENTRIES = 50;
 const EXACT_MATCH_PERSISTENCE_THRESHOLD = 3;
-const APPROXIMATE_MATCH_PERSISTENCE_THRESHOLD = 3;
+const SAME_MEANING_PERSISTENCE_THRESHOLD = 3;
 const SHOULD_LOG_TIMINGS = process.env.NODE_ENV !== "production";
 
 const requestSchema = z.object({
@@ -46,7 +46,7 @@ const systemInstruction = [
   "If it is a sentence, classify it as declarative, interrogative, imperative, or exclamatory.",
   "If unclear, use other.",
   "Keep explanation short.",
-  "Preserve the original language in normalizedText after trimming."
+  "Return normalizedText as the input after trimming; the application handles matching normalization separately."
 ].join(" ");
 
 function jsonError(message: string, status: number) {
@@ -57,6 +57,7 @@ type ClassifyTimings = Partial<Record<string, number>>;
 
 type ActiveExactMatch = {
   text: string;
+  normalizedText: string;
   kind: string;
   createdAt: Date;
 };
@@ -67,6 +68,10 @@ type ActiveComparableEntry = ActiveExactMatch & {
 
 function nowMs() {
   return performance.now();
+}
+
+function normalizeTextForMatching(text: string) {
+  return text.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
 async function measureStep<T>(
@@ -118,7 +123,7 @@ function safeErrorResponse(error: unknown) {
     error instanceof Error &&
     error.message === "The embedding model did not return a vector."
   ) {
-    return jsonError("Could not compare similar entries right now.", 502);
+    return jsonError("Could not compare same-meaning entries right now.", 502);
   }
 
   if (
@@ -167,20 +172,21 @@ async function cleanupExpiredInputs(now: Date) {
 }
 
 async function findActiveExactMatches(
-  text: string,
+  normalizedText: string,
   now: Date
 ): Promise<ActiveExactMatch[]> {
   const db = getPrismaClient();
 
   return db.ephemeralInput.findMany({
     where: {
-      text,
+      normalizedText,
       expiresAt: {
         gt: now
       }
     },
     select: {
       text: true,
+      normalizedText: true,
       kind: true,
       createdAt: true
     },
@@ -208,6 +214,7 @@ async function findActiveComparableEntries(
     },
     select: {
       text: true,
+      normalizedText: true,
       kind: true,
       embedding: true,
       createdAt: true
@@ -215,17 +222,19 @@ async function findActiveComparableEntries(
     orderBy: {
       createdAt: "desc"
     },
-    take: MAX_SIMILARITY_COMPARISON_ENTRIES
+    take: MAX_SEMANTIC_COMPARISON_ENTRIES
   });
 }
 
 async function storeEphemeralInput({
   text,
+  normalizedText,
   kind,
   embedding,
   expiresAt
 }: {
   text: string;
+  normalizedText: string;
   kind: string;
   embedding: number[];
   expiresAt: Date;
@@ -233,7 +242,7 @@ async function storeEphemeralInput({
   const db = getPrismaClient();
 
   await db.ephemeralInput.create({
-    data: { text, kind, embedding, expiresAt }
+    data: { text, normalizedText, kind, embedding, expiresAt }
   });
 }
 
@@ -303,7 +312,7 @@ async function createOrUpdateMatchEvent({
 }
 
 type TextValidation =
-  | { ok: true; text: string }
+  | { ok: true; text: string; normalizedText: string }
   | { ok: false; error: string };
 
 function validateText(body: unknown): TextValidation {
@@ -323,9 +332,11 @@ function validateText(body: unknown): TextValidation {
     return { ok: false, error: "Text must be 50 characters or fewer." };
   }
 
-  // Exact duplicate detection is intentionally trim-only for now.
-  // Case and punctuation are preserved, so "hello" and "Hello" are different.
-  return { ok: true, text };
+  return {
+    ok: true,
+    text,
+    normalizedText: normalizeTextForMatching(text)
+  };
 }
 
 export async function POST(request: Request) {
@@ -374,7 +385,7 @@ export async function POST(request: Request) {
     const activeExactMatches = await measureStep(
       timings,
       "exactDuplicateLookupMs",
-      () => findActiveExactMatches(validation.text, now)
+      () => findActiveExactMatches(validation.normalizedText, now)
     );
     const activeExactMatchCount = activeExactMatches.length + 1;
     const isDuplicate = activeExactMatches.length > 0;
@@ -384,7 +395,8 @@ export async function POST(request: Request) {
         activeExactMatchCount >= EXACT_MATCH_PERSISTENCE_THRESHOLD
           ? await measureStep(timings, "eventPersistenceMs", () =>
               createOrUpdateMatchEvent({
-                representativeText: validation.text,
+                representativeText:
+                  activeExactMatches[0]?.text ?? validation.text,
                 kind: data.kind,
                 matchType: "exact",
                 matchCount: activeExactMatchCount,
@@ -397,6 +409,7 @@ export async function POST(request: Request) {
       await measureStep(timings, "databaseInsertMs", () =>
         storeEphemeralInput({
           text: validation.text,
+          normalizedText: validation.normalizedText,
           kind: data.kind,
           embedding: [],
           expiresAt
@@ -411,11 +424,13 @@ export async function POST(request: Request) {
         ok: true,
         data: {
           ...data,
-          normalizedText: validation.text,
+          normalizedText: validation.normalizedText,
           isDuplicate: true,
+          hasSameMeaningMatch: false,
           hasApproximateMatch: false,
           similarEntries: [],
           activeExactMatchCount,
+          activeSameMeaningMatchCount: 0,
           activeApproximateMatchCount: 0,
           persistedEventAction: eventAction
         }
@@ -426,15 +441,15 @@ export async function POST(request: Request) {
     const embedding = await measureStep(timings, "embeddingGenerationMs", () =>
       createEmbedding(validation.text)
     );
-    const { similarEntries, strongApproximateMatches } = await measureStep(
+    const { similarEntries, strongSameMeaningMatches } = await measureStep(
       timings,
-      "similarityLookupComparisonMs",
+      "sameMeaningLookupComparisonMs",
       async () => {
         const previousEntries = await findActiveComparableEntries(now);
 
         return {
-          similarEntries: topSimilarEntries(embedding, previousEntries),
-          strongApproximateMatches: previousEntries
+          similarEntries: topSemanticMatches(embedding, previousEntries),
+          strongSameMeaningMatches: previousEntries
             .map((entry) => ({
               text: entry.text,
               kind: entry.kind,
@@ -447,7 +462,7 @@ export async function POST(request: Request) {
               )
             }))
             .filter(
-              (entry) => entry.similarity >= APPROXIMATE_MATCH_THRESHOLD
+              (entry) => entry.similarity >= SAME_MEANING_MATCH_THRESHOLD
             )
             .sort(
               (a, b) =>
@@ -457,27 +472,27 @@ export async function POST(request: Request) {
         };
       }
     );
-    const hasApproximateMatch = similarEntries.some(
-      (entry) => entry.similarity >= APPROXIMATE_MATCH_THRESHOLD
+    const hasSameMeaningMatch = similarEntries.some(
+      (entry) => entry.similarity >= SAME_MEANING_MATCH_THRESHOLD
     );
-    const activeApproximateMatchCount = strongApproximateMatches.length + 1;
+    const activeSameMeaningMatchCount = strongSameMeaningMatches.length + 1;
     const eventAction =
-      activeApproximateMatchCount >= APPROXIMATE_MATCH_PERSISTENCE_THRESHOLD
+      activeSameMeaningMatchCount >= SAME_MEANING_PERSISTENCE_THRESHOLD
         ? await measureStep(timings, "eventPersistenceMs", () =>
             createOrUpdateMatchEvent({
               representativeText:
-                strongApproximateMatches[0]?.text ?? validation.text,
+                strongSameMeaningMatches[0]?.text ?? validation.text,
               kind: data.kind,
               matchType: "approximate",
-              matchCount: activeApproximateMatchCount,
-              firstSeenAt: strongApproximateMatches[0]?.createdAt ?? now,
+              matchCount: activeSameMeaningMatchCount,
+              firstSeenAt: strongSameMeaningMatches[0]?.createdAt ?? now,
               lastSeenAt: now,
               averageSimilarity:
-                strongApproximateMatches.length > 0
-                  ? strongApproximateMatches.reduce(
+                strongSameMeaningMatches.length > 0
+                  ? strongSameMeaningMatches.reduce(
                       (sum, entry) => sum + entry.similarity,
                       0
-                    ) / strongApproximateMatches.length
+                    ) / strongSameMeaningMatches.length
                   : undefined
             })
           )
@@ -486,6 +501,7 @@ export async function POST(request: Request) {
     await measureStep(timings, "databaseInsertMs", () =>
       storeEphemeralInput({
         text: validation.text,
+        normalizedText: validation.normalizedText,
         kind: data.kind,
         embedding,
         expiresAt
@@ -499,12 +515,14 @@ export async function POST(request: Request) {
       ok: true,
       data: {
         ...data,
-        normalizedText: validation.text,
+        normalizedText: validation.normalizedText,
         isDuplicate,
-        hasApproximateMatch,
+        hasSameMeaningMatch,
+        hasApproximateMatch: hasSameMeaningMatch,
         similarEntries,
         activeExactMatchCount,
-        activeApproximateMatchCount,
+        activeSameMeaningMatchCount,
+        activeApproximateMatchCount: activeSameMeaningMatchCount,
         persistedEventAction: eventAction
       }
     });

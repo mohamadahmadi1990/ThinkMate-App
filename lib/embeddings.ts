@@ -1,6 +1,6 @@
 import { getOpenAIClient } from "@/lib/openai";
 
-export type SimilarEntry = {
+export type SemanticMatchEntry = {
   text: string;
   kind: string;
   similarity: number;
@@ -48,10 +48,10 @@ export function cosineSimilarity(a: number[], b: number[]) {
   return denominator === 0 ? 0 : dotProduct / denominator;
 }
 
-export function topSimilarEntries(
+export function topSemanticMatches(
   embedding: number[],
   entries: Array<{ text: string; kind: string; embedding: number[] }>
-): SimilarEntry[] {
+): SemanticMatchEntry[] {
   return entries
     .filter((entry) => entry.embedding.length === embedding.length)
     .map((entry) => ({

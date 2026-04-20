@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 const ACTIVE_WINDOW_MINUTES = 5;
 const MATCH_EVENT_THRESHOLD = 3;
-const APPROXIMATE_STRONG_MATCH_PERCENT = 90;
+const SAME_MEANING_STRONG_MATCH_PERCENT = 90;
 const REVIEW_EVENT_LIMIT = 50;
 
 function formatSimilarity(similarity: number | null) {
@@ -18,7 +18,13 @@ function getSignalStatus(matchCount: number) {
     return "At threshold";
   }
 
-  return matchCount > MATCH_EVENT_THRESHOLD ? "Above threshold" : "Below threshold";
+  return matchCount > MATCH_EVENT_THRESHOLD
+    ? "Above threshold"
+    : "Below threshold";
+}
+
+function formatMatchType(matchType: string) {
+  return matchType === "approximate" ? "same meaning" : matchType;
 }
 
 async function getRecentInputs() {
@@ -30,6 +36,7 @@ async function getRecentInputs() {
     },
     select: {
       text: true,
+      normalizedText: true,
       kind: true,
       createdAt: true,
       expiresAt: true
@@ -64,33 +71,37 @@ async function getReviewSummary() {
   const db = getPrismaClient();
   const now = new Date();
 
-  const [totalActiveEphemeralInputs, totalRecentMatchEvents, exactMatchEvents, approximateMatchEvents] =
-    await Promise.all([
-      db.ephemeralInput.count({
-        where: {
-          expiresAt: {
-            gt: now
-          }
+  const [
+    totalActiveEphemeralInputs,
+    totalRecentMatchEvents,
+    exactMatchEvents,
+    sameMeaningMatchEvents
+  ] = await Promise.all([
+    db.ephemeralInput.count({
+      where: {
+        expiresAt: {
+          gt: now
         }
-      }),
-      db.matchEvent.count(),
-      db.matchEvent.count({
-        where: {
-          matchType: "exact"
-        }
-      }),
-      db.matchEvent.count({
-        where: {
-          matchType: "approximate"
-        }
-      })
-    ]);
+      }
+    }),
+    db.matchEvent.count(),
+    db.matchEvent.count({
+      where: {
+        matchType: "exact"
+      }
+    }),
+    db.matchEvent.count({
+      where: {
+        matchType: "approximate"
+      }
+    })
+  ]);
 
   return {
     totalActiveEphemeralInputs,
     totalRecentMatchEvents,
     exactMatchEvents,
-    approximateMatchEvents
+    sameMeaningMatchEvents
   };
 }
 
@@ -127,8 +138,8 @@ export default async function ReviewPage() {
             <small>Exact events</small>
           </div>
           <div>
-            <span>{summary.approximateMatchEvents}</span>
-            <small>Approximate events</small>
+            <span>{summary.sameMeaningMatchEvents}</span>
+            <small>Same-meaning events</small>
           </div>
         </div>
 
@@ -138,8 +149,8 @@ export default async function ReviewPage() {
             <strong>{MATCH_EVENT_THRESHOLD} active matches</strong>
           </div>
           <div>
-            <span>Strong approximate match</span>
-            <strong>{APPROXIMATE_STRONG_MATCH_PERCENT}%+</strong>
+            <span>Strong same-meaning match</span>
+            <strong>{SAME_MEANING_STRONG_MATCH_PERCENT}%+</strong>
           </div>
           <div>
             <span>Active window</span>
@@ -157,7 +168,8 @@ export default async function ReviewPage() {
             <table className="review-table">
               <thead>
                 <tr>
-                  <th scope="col">Text</th>
+                  <th scope="col">Raw text</th>
+                  <th scope="col">Normalized text</th>
                   <th scope="col">Kind</th>
                   <th scope="col">Created</th>
                   <th scope="col">Expires</th>
@@ -165,8 +177,11 @@ export default async function ReviewPage() {
               </thead>
               <tbody>
                 {inputs.map((input) => (
-                  <tr key={`${input.text}-${input.createdAt.toISOString()}`}>
+                  <tr
+                    key={`${input.text}-${input.normalizedText}-${input.createdAt.toISOString()}`}
+                  >
                     <td>{input.text}</td>
+                    <td>{input.normalizedText}</td>
                     <td>{input.kind}</td>
                     <td>
                       <time dateTime={input.createdAt.toISOString()}>
@@ -212,7 +227,7 @@ export default async function ReviewPage() {
                     >
                       <td>{event.representativeText}</td>
                       <td>{event.kind}</td>
-                      <td>{event.matchType}</td>
+                      <td>{formatMatchType(event.matchType)}</td>
                       <td>{event.matchCount}</td>
                       <td>
                         <span className="signal-pill">

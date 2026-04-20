@@ -15,16 +15,17 @@ model UserInput {
 }
 
 model EphemeralInput {
-  id        String   @id @default(cuid())
-  text      String
-  kind      String
-  embedding Float[]  @default([])
-  createdAt DateTime @default(now())
-  expiresAt DateTime
+  id             String   @id @default(cuid())
+  text           String
+  normalizedText String   @default("")
+  kind           String
+  embedding      Float[]  @default([])
+  createdAt      DateTime @default(now())
+  expiresAt      DateTime
 
   @@index([createdAt])
   @@index([expiresAt])
-  @@index([text, expiresAt])
+  @@index([normalizedText, expiresAt])
 }
 
 model MatchEvent {

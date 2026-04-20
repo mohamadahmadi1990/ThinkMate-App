@@ -76,12 +76,19 @@ npm run db:migrate
 
 ## Text Normalization
 
-Exact duplicate checks currently use trim-only normalization. Leading and trailing whitespace are removed before lookup and storage, but case, punctuation, and internal spacing are preserved.
+Exact duplicate checks use a normalized matching key for active raw inputs:
+
+- trim leading and trailing whitespace
+- lowercase
+- collapse repeated internal whitespace to a single space
+
+The original accepted text is still stored temporarily in `EphemeralInput.text`, while `EphemeralInput.normalizedText` is used for exact duplicate lookup.
 
 Examples:
 
 - `" hello "` matches `hello`
-- `Hello` and `hello` are treated as different text
+- `Hello` matches `hello`
+- `hello   there` matches `hello there`
 
 ## Retention Model
 
@@ -92,6 +99,6 @@ Expired ephemeral inputs are removed opportunistically during classify requests.
 Aggregated match events are stored in `MatchEvent` when active-window matches reach a threshold:
 
 - exact matches: 3 active occurrences including the current input
-- strong approximate matches: 3 active occurrences including the current input
+- strong same-meaning matches: 3 active occurrences including the current input
 
-The strong approximate threshold remains `0.90`. The older `UserInput` table is no longer used by the classify flow.
+The strong same-meaning threshold remains `0.90`. The older `UserInput` table is no longer used by the classify flow.
