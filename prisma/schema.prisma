@@ -1,0 +1,43 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model UserInput {
+  id        String   @id @default(cuid())
+  text      String   @unique
+  kind      String
+  embedding Float[]  @default([])
+  createdAt DateTime @default(now())
+}
+
+model EphemeralInput {
+  id        String   @id @default(cuid())
+  text      String
+  kind      String
+  embedding Float[]  @default([])
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+
+  @@index([createdAt])
+  @@index([expiresAt])
+  @@index([text, expiresAt])
+}
+
+model MatchEvent {
+  id                 String   @id @default(cuid())
+  representativeText String
+  kind               String
+  matchType          String
+  matchCount         Int
+  firstSeenAt        DateTime
+  lastSeenAt         DateTime
+  createdAt          DateTime @default(now())
+  averageSimilarity  Float?
+
+  @@index([lastSeenAt])
+  @@index([matchType, representativeText, lastSeenAt])
+}

@@ -15,6 +15,13 @@ type Classification = {
   normalizedText: string;
   kind: ClassificationKind;
   isSentence: boolean;
+  isDuplicate: boolean;
+  hasApproximateMatch: boolean;
+  similarEntries: Array<{
+    text: string;
+    kind: string;
+    similarity: number;
+  }>;
   explanation: string;
 };
 
@@ -23,6 +30,11 @@ type ApiResponse =
   | { ok: false; error: string };
 
 const maxLength = 50;
+const closeMatchThreshold = 0.9;
+
+function formatSimilarity(score: number) {
+  return `${Math.round(score * 100)}%`;
+}
 
 export default function Home() {
   const [text, setText] = useState("");
@@ -82,6 +94,15 @@ export default function Home() {
     setError("");
   }
 
+  const closeMatches =
+    result?.similarEntries.filter(
+      (entry) => entry.similarity >= closeMatchThreshold
+    ) ?? [];
+  const relatedResults =
+    result?.similarEntries.filter(
+      (entry) => entry.similarity < closeMatchThreshold
+    ) ?? [];
+
   return (
     <main className="shell">
       <section className="panel" aria-labelledby="page-title">
@@ -137,10 +158,60 @@ export default function Home() {
                 <dd>{result.isSentence ? "Yes" : "No"}</dd>
               </div>
               <div>
+                <dt>Exact duplicate</dt>
+                <dd>
+                  {result.isDuplicate
+                    ? "Yes, this exact text is already saved."
+                    : "No exact duplicate found."}
+                </dd>
+              </div>
+              <div>
+                <dt>High-confidence approximate match</dt>
+                <dd>{result.hasApproximateMatch ? "Yes" : "No"}</dd>
+              </div>
+              <div>
                 <dt>Why</dt>
                 <dd>{result.explanation}</dd>
               </div>
             </dl>
+
+            {result.similarEntries.length > 0 ? (
+              <div className="similar">
+                {closeMatches.length > 0 ? (
+                  <section className="similar-group">
+                    <h3>Close match</h3>
+                    <ol>
+                      {closeMatches.map((entry) => (
+                        <li key={`${entry.text}-${entry.similarity}`}>
+                          <span>{entry.text}</span>
+                          <small>
+                            {entry.kind} -{" "}
+                            {formatSimilarity(entry.similarity)} similar
+                          </small>
+                        </li>
+                      ))}
+                    </ol>
+                  </section>
+                ) : null}
+
+                {relatedResults.length > 0 ? (
+                  <section className="similar-group">
+                    <h3>Related results</h3>
+                    <ol>
+                      {relatedResults.map((entry) => (
+                        <li key={`${entry.text}-${entry.similarity}`}>
+                          <span>{entry.text}</span>
+                          <small>
+                            {entry.kind} -{" "}
+                            {formatSimilarity(entry.similarity)} similar
+                          </small>
+                        </li>
+                      ))}
+                    </ol>
+                  </section>
+                ) : null}
+              </div>
+            ) : null}
           </article>
         ) : null}
       </section>
