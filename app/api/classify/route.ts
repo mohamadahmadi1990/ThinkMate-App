@@ -55,6 +55,16 @@ function jsonError(message: string, status: number) {
 
 type ClassifyTimings = Partial<Record<string, number>>;
 
+type ActiveExactMatch = {
+  text: string;
+  kind: string;
+  createdAt: Date;
+};
+
+type ActiveComparableEntry = ActiveExactMatch & {
+  embedding: number[];
+};
+
 function nowMs() {
   return performance.now();
 }
@@ -156,7 +166,10 @@ async function cleanupExpiredInputs(now: Date) {
   });
 }
 
-async function findActiveExactMatches(text: string, now: Date) {
+async function findActiveExactMatches(
+  text: string,
+  now: Date
+): Promise<ActiveExactMatch[]> {
   const db = getPrismaClient();
 
   return db.ephemeralInput.findMany({
@@ -177,7 +190,9 @@ async function findActiveExactMatches(text: string, now: Date) {
   });
 }
 
-async function findActiveComparableEntries(now: Date) {
+async function findActiveComparableEntries(
+  now: Date
+): Promise<ActiveComparableEntry[]> {
   const db = getPrismaClient();
 
   return db.ephemeralInput.findMany({

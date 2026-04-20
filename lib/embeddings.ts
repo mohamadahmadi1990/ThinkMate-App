@@ -51,7 +51,7 @@ export function cosineSimilarity(a: number[], b: number[]) {
 export function topSimilarEntries(
   embedding: number[],
   entries: Array<{ text: string; kind: string; embedding: number[] }>
-) {
+): SimilarEntry[] {
   return entries
     .filter((entry) => entry.embedding.length === embedding.length)
     .map((entry) => ({
