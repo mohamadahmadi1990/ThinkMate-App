@@ -1,0 +1,190 @@
+:root {
+  color-scheme: light;
+  --background: #f7f7f4;
+  --foreground: #202124;
+  --muted: #686f76;
+  --panel: #ffffff;
+  --border: #d8ddd8;
+  --accent: #1f7a5c;
+  --accent-dark: #15543f;
+  --danger: #b3261e;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+.shell {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  padding: 24px;
+}
+
+.panel {
+  width: min(100%, 520px);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 24px;
+}
+
+.intro {
+  margin-bottom: 24px;
+}
+
+h1,
+h2,
+p {
+  margin: 0;
+}
+
+h1 {
+  font-size: 2rem;
+  line-height: 1.1;
+}
+
+h2 {
+  font-size: 1.5rem;
+  line-height: 1.2;
+  text-transform: capitalize;
+}
+
+.intro p,
+.meta,
+dt,
+.eyebrow {
+  color: var(--muted);
+}
+
+.intro p {
+  margin-top: 8px;
+}
+
+.form {
+  display: grid;
+  gap: 10px;
+}
+
+label {
+  font-weight: 700;
+}
+
+input {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--foreground);
+  padding: 12px;
+}
+
+input:focus {
+  border-color: var(--accent);
+  outline: 2px solid color-mix(in srgb, var(--accent) 25%, transparent);
+}
+
+.meta {
+  display: flex;
+  justify-content: flex-end;
+  font-size: 0.9rem;
+}
+
+.actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+button {
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  background: var(--accent);
+  color: #ffffff;
+  cursor: pointer;
+  padding: 10px 14px;
+}
+
+button:hover:not(:disabled) {
+  background: var(--accent-dark);
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.secondary {
+  background: #ffffff;
+  color: var(--accent);
+}
+
+.secondary:hover:not(:disabled) {
+  background: #eef7f3;
+}
+
+.error {
+  color: var(--danger);
+  margin-top: 18px;
+}
+
+.result {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-top: 24px;
+  padding: 18px;
+}
+
+.eyebrow {
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+}
+
+dl {
+  display: grid;
+  gap: 12px;
+  margin: 18px 0 0;
+}
+
+dt {
+  font-size: 0.85rem;
+  margin-bottom: 3px;
+}
+
+dd {
+  margin: 0;
+}
+
+@media (max-width: 480px) {
+  .shell {
+    align-items: start;
+    padding: 16px;
+  }
+
+  .panel {
+    padding: 18px;
+  }
+
+  .actions {
+    flex-direction: column;
+  }
+}
